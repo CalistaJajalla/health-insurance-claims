@@ -6,17 +6,17 @@ from sqlalchemy import create_engine
 import streamlit as st
 from joblib import load
 
-# --------------------------
 # Config
-# --------------------------
-st.set_page_config(page_title="🏥 Health Insurance Claims Dashboard", layout="wide")
+st.set_page_config(page_title="🏥 Health Insurance Claims", layout="wide")
 
+# Palette I searched in the internet (https://www.color-hex.com/color-palette/114966)
 PALETTE = {
-    "primary": "#1f77b4",
-    "accent": "#ff7f0e",
-    "success": "#2ca02c",
-    "muted": "#6c757d",
-    "plan": "#9467bd",
+    "background_light": "#ffd5d5",  # light pink background for KPI boxes
+    "primary": "#ff867c",           # main coral-ish color for bars, titles
+    "accent": "#ffeaac",            # pale yellow accent
+    "success": "#95ccc5",           # teal-ish for success/highlights
+    "dark": "#2e5668",              # dark teal for text and lines
+    "shadow": "rgba(46, 86, 104, 0.15)",  # shadow color with transparency
 }
 
 plt.rcParams.update({
@@ -24,11 +24,13 @@ plt.rcParams.update({
     "axes.grid": True,
     "grid.alpha": 0.15,
     "axes.titleweight": "bold",
+    "axes.edgecolor": PALETTE["dark"],
+    "axes.labelcolor": PALETTE["dark"],
+    "xtick.color": PALETTE["dark"],
+    "ytick.color": PALETTE["dark"],
 })
 
-# --------------------------
 # Helpers
-# --------------------------
 def human_format(num):
     if num is None or (isinstance(num, float) and pd.isna(num)):
         return "N/A"
@@ -55,9 +57,27 @@ def run_query(query, params=()):
     engine = get_engine()
     return pd.read_sql(query, engine, params=params)
 
-# --------------------------
-# Main App
-# --------------------------
+# Custom KPI box styling
+def styled_metric(col, label, value, delta=None, delta_color="normal"):
+    label_style = "font-weight:600; font-size:1.1rem; color:{dark}; margin-bottom:-5px;".format(**PALETTE)
+    value_style = "font-size:2.3rem; font-weight:700; color:{primary}; margin:0;".format(**PALETTE)
+    delta_style = "font-size:1rem; font-weight:500; color:{dark};".format(**PALETTE)
+
+    with col:
+        st.markdown(f'<p style="{label_style}">{label}</p>', unsafe_allow_html=True)
+        st.markdown(f'<p style="{value_style}">{value}</p>', unsafe_allow_html=True)
+
+        if delta is not None:
+            delta_color_css = {
+                "normal": PALETTE['dark'],
+                "inverse": PALETTE['primary'],
+                "off": PALETTE['dark'],
+            }.get(delta_color, PALETTE['dark'])
+            st.markdown(
+                f'<p style="{delta_style} color:{delta_color_css};">{delta}</p>',
+                unsafe_allow_html=True
+            )
+
 def main():
     st.title("🏥 Health Insurance Claims Dashboard")
     st.caption("Executive insights: claims, costs, and plan performance")
@@ -91,9 +111,7 @@ def main():
     if filter_clause:
         filter_clause = ' AND ' + filter_clause
 
-    # --------------------------
-    # KPIs
-    # --------------------------
+    # KPIs Query
     kpi_sql = f"""
     SELECT
         COUNT(DISTINCT f.person_id) AS total_patients,
@@ -105,16 +123,17 @@ def main():
     WHERE 1=1 {filter_clause};
     """
     kpi_df = run_query(kpi_sql, tuple(params)).iloc[0]
-    k1,k2,k3,k4 = st.columns(4)
-    k1.metric("Total Patients", human_format(kpi_df.total_patients))
-    k2.metric("Total Medical Cost", f"${human_format(kpi_df.total_medical_cost)}")
-    k3.metric("Avg Claim Amount", f"${human_format(kpi_df.avg_claim_amount)}")
-    k4.metric("Total Claims", human_format(kpi_df.total_claims))
+
+    # Show KPIs in boxes
+    k1, k2, k3, k4 = st.columns(4)
+    styled_metric(k1, "Total Patients", human_format(kpi_df.total_patients))
+    styled_metric(k2, "Total Medical Cost", f"${human_format(kpi_df.total_medical_cost)}")
+    styled_metric(k3, "Avg Claim Amount", f"${human_format(kpi_df.avg_claim_amount)}")
+    styled_metric(k4, "Total Claims", human_format(kpi_df.total_claims))
+
     st.markdown("---")
 
-    # --------------------------
-    # 2x3 Story-driven charts
-    # --------------------------
+    # Business Analytics Columns
     col1, col2 = st.columns(2)
 
     # Chart 1: Claims by Region
@@ -131,15 +150,19 @@ def main():
         st.subheader("Claims by Region")
         st.caption("Regions with the highest total claims.")
         if not region_df.empty:
-            fig, ax = plt.subplots(figsize=(6,3))
+            fig, ax = plt.subplots(figsize=(6, 3))
             ax.barh(region_df['region'], region_df['claims_count'], color=PALETTE['primary'])
             ax.invert_yaxis()
-            ax.set_xlabel("Claims", weight='bold')
+            ax.set_xlabel("Claims", weight='bold', color=PALETTE['dark'])
             ax.set_ylabel(None)
-            ax.set_xticklabels([human_format(x) for x in ax.get_xticks()])
+            xticks = ax.get_xticks()
+            ax.set_xticks(xticks)
+            ax.set_xticklabels([human_format(x) for x in xticks], color=PALETTE['dark'])
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
             st.pyplot(fig)
 
-    # Chart 2: Claims by Plan Type with Expander
+    # Chart 2: Claims by Plan Type
     plan_sql = f"""
     SELECT i.plan_type, SUM(f.claims_count) AS total_claims
     FROM fact_medical_costs_claims f
@@ -157,14 +180,16 @@ def main():
         "POS":"Point of Service",
         "HDHP":"High Deductible Health Plan"
     }
-    plan_df['plan_short'] = plan_df['plan_type']  # abbreviations for chart
+    plan_df['plan_short'] = plan_df['plan_type']
     with col2:
         st.subheader("Claims by Plan Type")
         st.caption("Abbreviated plan types shown. Click below for full definitions.")
         if not plan_df.empty:
-            fig2, ax2 = plt.subplots(figsize=(6,3))
-            ax2.bar(plan_df['plan_short'], plan_df['total_claims'], color=PALETTE['plan'])
-            ax2.set_ylabel("Claims", weight='bold')
+            fig2, ax2 = plt.subplots(figsize=(6, 3))
+            ax2.bar(plan_df['plan_short'], plan_df['total_claims'], color=PALETTE['accent'])
+            ax2.set_ylabel("Claims", weight='bold', color=PALETTE['dark'])
+            ax2.spines['top'].set_visible(False)
+            ax2.spines['right'].set_visible(False)
             st.pyplot(fig2)
         with st.expander("Show Plan Type Full Names"):
             for k,v in plan_defs.items():
@@ -193,11 +218,15 @@ def main():
         st.subheader("Average Medical Cost by Age")
         st.caption("Shows average annual cost per age group.")
         if not cost_df.empty:
-            fig3, ax3 = plt.subplots(figsize=(6,3))
-            ax3.bar(cost_df['age_group'], cost_df['avg_medical_cost'], color=PALETTE['accent'])
-            ax3.set_xlabel("Age Group", weight='bold')
-            ax3.set_ylabel("Avg Cost", weight='bold')
-            ax3.set_yticklabels([human_format(x) for x in ax3.get_yticks()])
+            fig3, ax3 = plt.subplots(figsize=(6, 3))
+            ax3.bar(cost_df['age_group'], cost_df['avg_medical_cost'], color=PALETTE['success'])
+            ax3.set_xlabel("Age Group", weight='bold', color=PALETTE['dark'])
+            ax3.set_ylabel("Avg Cost", weight='bold', color=PALETTE['dark'])
+            yticks = ax3.get_yticks()
+            ax3.set_yticks(yticks)
+            ax3.set_yticklabels([human_format(x) for x in yticks], color=PALETTE['dark'])
+            ax3.spines['top'].set_visible(False)
+            ax3.spines['right'].set_visible(False)
             st.pyplot(fig3)
 
     # Chart 4: Claims per Hospitalization vs Age
@@ -215,16 +244,18 @@ def main():
         st.subheader("Claims per Hospitalization")
         st.caption("Claim intensity relative to hospitalizations by age.")
         if not hosp_df.empty:
-            fig4, ax4 = plt.subplots(figsize=(6,3))
+            fig4, ax4 = plt.subplots(figsize=(6, 3))
             ax4.scatter(hosp_df['age'], hosp_df['claims_per_hosp'], color=PALETTE['primary'])
-            z = np.polyfit(hosp_df['age'], hosp_df['claims_per_hosp'],1)
+            z = np.polyfit(hosp_df['age'], hosp_df['claims_per_hosp'], 1)
             p = np.poly1d(z)
-            ax4.plot(hosp_df['age'], p(hosp_df['age']), '--', color='red')
-            ax4.set_xlabel("Age", weight='bold')
-            ax4.set_ylabel("Claims per Hosp.", weight='bold')
+            ax4.plot(hosp_df['age'], p(hosp_df['age']), '--', color=PALETTE['dark'])
+            ax4.set_xlabel("Age", weight='bold', color=PALETTE['dark'])
+            ax4.set_ylabel("Claims per Hosp.", weight='bold', color=PALETTE['dark'])
+            ax4.spines['top'].set_visible(False)
+            ax4.spines['right'].set_visible(False)
             st.pyplot(fig4)
 
-    # Chart 5: Avg Cost by Plan & Region (Legend fixed)
+    # Chart 5: Avg Cost by Plan & Region
     avg_plan_region_sql = f"""
     SELECT p.region, i.plan_type, AVG(f.annual_medical_cost) AS avg_cost
     FROM fact_medical_costs_claims f
@@ -241,12 +272,14 @@ def main():
         st.caption("Shows which plan type and region combinations are most costly.")
         if not avg_plan_region_df.empty:
             pivot_df = avg_plan_region_df.pivot(index='region', columns='plan_type', values='avg_cost')
-            fig5, ax5 = plt.subplots(figsize=(6,3))
-            pivot_df.plot(kind='bar', ax=ax5, stacked=True, colormap='tab20', legend=True)
-            ax5.set_ylabel("Avg Cost", weight='bold')
+            fig5, ax5 = plt.subplots(figsize=(6, 3))
+            pivot_df.plot(kind='bar', ax=ax5, stacked=True, colormap='Pastel1', legend=True)
+            ax5.set_ylabel("Avg Cost", weight='bold', color=PALETTE['dark'])
             ax5.set_xlabel(None)
-            ax5.set_xticklabels(pivot_df.index, rotation=45, ha='right')
-            ax5.legend(title="Plan Type", bbox_to_anchor=(1.02,1), loc='upper left')
+            ax5.set_xticklabels(pivot_df.index, rotation=45, ha='right', color=PALETTE['dark'])
+            ax5.spines['top'].set_visible(False)
+            ax5.spines['right'].set_visible(False)
+            ax5.legend(title="Plan Type", bbox_to_anchor=(1.02, 1), loc='upper left')
             st.pyplot(fig5)
 
     # Chart 6: High-Cost Patients by Region
@@ -263,15 +296,15 @@ def main():
         st.subheader("High-Cost Patients by Region")
         st.caption("Patients with >$50K annual cost by region.")
         if not high_cost_df.empty:
-            fig6, ax6 = plt.subplots(figsize=(6,3))
-            ax6.bar(high_cost_df['region'], high_cost_df['high_cost_patients'], color=PALETTE['accent'])
-            ax6.set_ylabel("Count", weight='bold')
-            ax6.set_xlabel("Region", weight='bold')
+            fig6, ax6 = plt.subplots(figsize=(6, 3))
+            ax6.bar(high_cost_df['region'], high_cost_df['high_cost_patients'], color=PALETTE['dark'])
+            ax6.set_ylabel("Count", weight='bold', color=PALETTE['dark'])
+            ax6.set_xlabel("Region", weight='bold', color=PALETTE['dark'])
+            ax6.spines['top'].set_visible(False)
+            ax6.spines['right'].set_visible(False)
             st.pyplot(fig6)
 
-# --------------------------
-# ML Prediction Section
-# --------------------------
+    # ML Prediction Section
     st.markdown("---")
     st.subheader("Predict Annual Medical Cost")
     st.caption("Enter patient info to estimate future medical cost. The prediction is based on historical trends.")
@@ -279,8 +312,8 @@ def main():
     with st.form("predict_form", clear_on_submit=False):
         age = st.number_input("Age", 0, 120, 35)
         bmi = st.number_input("BMI", 10.0, 60.0, 25.0, format="%.2f")
-        smoker = st.selectbox("Smoker", ["No","Yes"])
-        smoker_val = 1 if smoker=="Yes" else 0
+        smoker = st.selectbox("Smoker", ["No", "Yes"])
+        smoker_val = 1 if smoker == "Yes" else 0
         income = st.number_input("Annual Income (USD)", 0.0, 2_000_000.0, 50_000.0, step=1000.0, format="%.2f")
         chronic_count = st.number_input("Number of Chronic Conditions", 0, 20, 0)
         vis_type = st.selectbox("Visualization Type", ["Histogram (Low/Med/High)", "Box-Percentiles", "Percentile Gauge"])
@@ -300,10 +333,9 @@ def main():
                     'income': [income],
                     'chronic_count': [chronic_count]
                 })
-                pred = float(model.predict(input_df)[0])
+                pred = float(model.predict(input_df.values)[0])
                 st.success(f"Predicted Annual Medical Cost: ${pred:,.2f}")
 
-                # Historical costs for context
                 hist_sql = f"""
                     SELECT annual_medical_cost
                     FROM fact_medical_costs_claims f
@@ -316,43 +348,50 @@ def main():
                     costs = pd.Series([5000, 12000, 25000, 60000, 120000])
                 else:
                     costs = hist_df['annual_medical_cost']
-                    # Remove extreme outliers
                     lower, upper = costs.quantile(0.05), costs.quantile(0.95)
                     costs = costs[(costs >= lower) & (costs <= upper)]
 
-                # Calculate percentiles
                 p25 = costs.quantile(0.25)
                 median = costs.median()
                 p75 = costs.quantile(0.75)
                 min_val = costs.min()
                 max_val = costs.max()
 
-                fig, ax = plt.subplots(figsize=(6,2.5))
+                fig, ax = plt.subplots(figsize=(6, 2.5))
 
                 if vis_type == "Histogram (Low/Med/High)":
                     bins = [min_val, p25, p75, max_val]
-                    colors = [PALETTE['success'], PALETTE['accent'], PALETTE['primary']]
+                    colors = [PALETTE['primary'], PALETTE['accent'], PALETTE['success']]
                     labels = ['Low', 'Typical', 'High']
-                    for i in range(len(bins)-1):
-                        ax.barh([0], bins[i+1]-bins[i], left=bins[i], color=colors[i], edgecolor='white', label=labels[i])
-                    ax.axvline(pred, color='black', linestyle='--', lw=2, label="Prediction")
+                    left = bins[0]
+                    for i in range(len(bins) - 1):
+                        width = bins[i+1] - left
+                        ax.barh([0], width, left=left, color=colors[i], edgecolor='white', label=labels[i])
+                        left = bins[i+1]
+                    ax.axvline(pred, color=PALETTE['dark'], linestyle='--', lw=2, label="Prediction")
                     ax.set_yticks([])
-                    ax.set_xlabel("Annual Medical Cost (USD)")
-                    ax.set_title("Prediction in Context (Low/Typical/High)")
-                    ax.legend(loc='upper right')
+                    ax.set_xlabel("Annual Medical Cost (USD)", color=PALETTE['dark'])
+                    ax.set_title("Prediction in Context (Low/Typical/High)", color=PALETTE['dark'])
+                    ax.legend(loc='upper right', frameon=False)
+                    ax.spines['top'].set_visible(False)
+                    ax.spines['right'].set_visible(False)
+
                     st.caption(
                         "Histogram shows where your predicted cost falls relative to typical patients. "
                         "Low/High defined by 25th and 75th percentiles; extreme outliers excluded."
                     )
 
                 elif vis_type == "Box-Percentiles":
-                    ax.barh([0], p75-p25, left=p25, color=PALETTE['accent'], edgecolor='white', height=0.5)
-                    ax.plot([median], [0], marker='o', color='black', label='Median')
+                    ax.barh([0], p75 - p25, left=p25, color=PALETTE['accent'], edgecolor='white', height=0.5)
+                    ax.plot([median], [0], marker='o', color=PALETTE['dark'], label='Median')
                     ax.plot([pred], [0], marker='X', color=PALETTE['primary'], markersize=10, label='Prediction')
                     ax.set_yticks([])
-                    ax.set_xlabel("Annual Medical Cost (USD)")
-                    ax.set_title("Prediction vs Typical Range (25th–75th Percentile)")
-                    ax.legend(loc='upper right')
+                    ax.set_xlabel("Annual Medical Cost (USD)", color=PALETTE['dark'])
+                    ax.set_title("Prediction vs Typical Range (25th–75th Percentile)", color=PALETTE['dark'])
+                    ax.legend(loc='upper right', frameon=False)
+                    ax.spines['top'].set_visible(False)
+                    ax.spines['right'].set_visible(False)
+
                     st.caption(
                         "Bar shows the interquartile range (25th–75th percentile) of patient costs. "
                         "The dot is the median, and the X is your prediction."
@@ -361,12 +400,15 @@ def main():
                 elif vis_type == "Percentile Gauge":
                     percentile = ((pred - min_val) / (max_val - min_val)) * 100
                     percentile = max(0, min(percentile, 100))
-                    ax.barh([0], 100, color=PALETTE['muted'], height=0.4)
+                    ax.barh([0], 100, color=PALETTE['accent'], height=0.4)
                     ax.barh([0], percentile, color=PALETTE['primary'], height=0.4)
                     ax.set_yticks([])
-                    ax.set_xlabel("Percentile of Annual Medical Costs")
-                    ax.set_title("Prediction Percentile vs Typical Patients")
-                    ax.text(percentile + 1, 0, f"{percentile:.0f}%", va='center', fontweight='bold')
+                    ax.set_xlabel("Percentile of Annual Medical Costs", color=PALETTE['dark'])
+                    ax.set_title("Prediction Percentile vs Typical Patients", color=PALETTE['dark'])
+                    ax.text(percentile + 1, 0, f"{percentile:.0f}%", va='center', fontweight='bold', color=PALETTE['dark'])
+                    ax.spines['top'].set_visible(False)
+                    ax.spines['right'].set_visible(False)
+
                     st.caption(
                         "Gauge shows the percentile ranking of your predicted cost among typical patients. "
                         "Outliers are excluded, so 50% represents the median patient cost."
@@ -377,5 +419,5 @@ def main():
             except Exception as e:
                 st.error(f"Prediction failed: {e}")
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
