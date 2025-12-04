@@ -49,7 +49,7 @@ def get_engine():
     host = st.secrets["POSTGRES_HOST"]
     port = st.secrets["POSTGRES_PORT"]
     db = st.secrets["POSTGRES_DB"]
-    url = f"postgresql://{user}:{password}@{host}:{port}/{db}?sslmode=require"
+    url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
     engine = create_engine(url, pool_pre_ping=True)
     return engine
     
