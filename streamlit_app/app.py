@@ -328,7 +328,16 @@ def main():
             ax6.spines['right'].set_visible(False)
             st.pyplot(fig6)
     
-    # ML Prediction Section
+    # ML Prediction Section)
+    @st.cache_resource
+    def load_model():
+        # logic to load model from local path or huggingface
+        # For example, load from local path:
+        return load("path/to/your/local/medical_cost_model.joblib")
+    
+    # Access Hugging Face API token from secrets
+    HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", None)
+
     st.markdown("---")
     st.subheader("Predict Annual Medical Cost")
     st.caption("Enter patient info to estimate future medical cost. The prediction is based on historical trends.")
@@ -366,7 +375,7 @@ def main():
                 pred = float(model.predict(input_df.values)[0])
                 st.success(f"Predicted Annual Medical Cost: ${pred:,.2f}")
             except Exception as e:
-                st.error(f"Prediction failed: {e}")
+            st.error(f"Prediction failed: {e}")
                     
                 hist_sql = f"""
                     SELECT annual_medical_cost
