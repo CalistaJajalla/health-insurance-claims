@@ -6,7 +6,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 from joblib import load
-from db import get_engine 
+from db import get_engine     
+import requests
+
+# This is for my joblib file (I uploaded it in huggingface so I need to link that to github)
+HF_URL = "https://huggingface.co/CalIX7a/ml-health-claims/resolve/main/medical_cost_model.joblib"
+LOCAL_MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'etl', 'medical_cost_model.joblib')
 
 # Config
 st.set_page_config(page_title="🏥 Health Insurance Claims", layout="wide")
@@ -301,6 +306,22 @@ def main():
             ax6.spines['right'].set_visible(False)
             st.pyplot(fig6)
 
+
+    # This is for checking if we can connect to the .joblib file in huggingface
+    def download_model_if_missing():
+        if not os.path.exists(LOCAL_MODEL_PATH):
+            st.info("Downloading ML model, please wait...")
+            try:
+                response = requests.get(HF_URL)
+                response.raise_for_status()  # raise error if download fails
+                with open(LOCAL_MODEL_PATH, "wb") as f:
+                    f.write(response.content)
+                st.success("Model downloaded successfully!")
+            except Exception as e:
+                st.error(f"Failed to download model: {e}")
+                return False
+        return True
+
     # ML Prediction Section
     st.markdown("---")
     st.subheader("Predict Annual Medical Cost")
@@ -317,12 +338,11 @@ def main():
         submitted = st.form_submit_button("Predict")
 
     if submitted:
-        model_path = os.path.join(os.path.dirname(__file__), '..', 'etl', 'medical_cost_model.joblib')
-        if not os.path.exists(model_path):
-            st.error("Model unavailable. Place 'medical_cost_model.joblib' in '../etl/' relative to this script.")
+        if not download_model_if_missing():
+            st.error("Model unavailable and could not be downloaded.")
         else:
             try:
-                model = load(model_path)
+                model = load(LOCAL_MODEL_PATH)
                 input_df = pd.DataFrame({
                     'age': [age],
                     'bmi': [bmi],
@@ -332,7 +352,7 @@ def main():
                 })
                 pred = float(model.predict(input_df.values)[0])
                 st.success(f"Predicted Annual Medical Cost: ${pred:,.2f}")
-
+    
                 hist_sql = f"""
                     SELECT annual_medical_cost
                     FROM fact_medical_costs_claims f
@@ -347,15 +367,15 @@ def main():
                     costs = hist_df['annual_medical_cost']
                     lower, upper = costs.quantile(0.05), costs.quantile(0.95)
                     costs = costs[(costs >= lower) & (costs <= upper)]
-
+    
                 p25 = costs.quantile(0.25)
                 median = costs.median()
                 p75 = costs.quantile(0.75)
                 min_val = costs.min()
                 max_val = costs.max()
-
+    
                 fig, ax = plt.subplots(figsize=(6, 2.5))
-
+    
                 if vis_type == "Histogram (Low/Med/High)":
                     bins = [min_val, p25, p75, max_val]
                     colors = [PALETTE['primary'], PALETTE['accent'], PALETTE['success']]
@@ -372,12 +392,12 @@ def main():
                     ax.legend(loc='upper right', frameon=False)
                     ax.spines['top'].set_visible(False)
                     ax.spines['right'].set_visible(False)
-
+    
                     st.caption(
                         "Histogram shows where your predicted cost falls relative to typical patients. "
                         "Low/High defined by 25th and 75th percentiles; extreme outliers excluded."
                     )
-
+    
                 elif vis_type == "Box-Percentiles":
                     ax.barh([0], p75 - p25, left=p25, color=PALETTE['accent'], edgecolor='white', height=0.5)
                     ax.plot([median], [0], marker='o', color=PALETTE['dark'], label='Median')
@@ -388,12 +408,12 @@ def main():
                     ax.legend(loc='upper right', frameon=False)
                     ax.spines['top'].set_visible(False)
                     ax.spines['right'].set_visible(False)
-
+    
                     st.caption(
                         "Bar shows the interquartile range (25th–75th percentile) of patient costs. "
                         "The dot is the median, and the X is your prediction."
                     )
-
+    
                 elif vis_type == "Percentile Gauge":
                     percentile = ((pred - min_val) / (max_val - min_val)) * 100
                     percentile = max(0, min(percentile, 100))
@@ -405,14 +425,14 @@ def main():
                     ax.text(percentile + 1, 0, f"{percentile:.0f}%", va='center', fontweight='bold', color=PALETTE['dark'])
                     ax.spines['top'].set_visible(False)
                     ax.spines['right'].set_visible(False)
-
+    
                     st.caption(
                         "Gauge shows the percentile ranking of your predicted cost among typical patients. "
                         "Outliers are excluded, so 50% represents the median patient cost."
                     )
-
+    
                 st.pyplot(fig)
-
+    
             except Exception as e:
                 st.error(f"Prediction failed: {e}")
 
