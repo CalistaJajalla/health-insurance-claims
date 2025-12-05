@@ -329,7 +329,7 @@ def main():
             st.pyplot(fig6)
     
     # ML Prediction Section
-
+    
     # Access Hugging Face API token from secrets (if needed for future)
     HF_API_TOKEN = st.secrets.get("HF_API_TOKEN", None)
     
@@ -337,14 +337,19 @@ def main():
     def load_model_cached():
         if not download_model_if_missing():
             return None
-        return load(LOCAL_MODEL_PATH)
+        try:
+            model = load(LOCAL_MODEL_PATH)
+            return model
+        except Exception as e:
+            st.error(f"Failed to load ML model: {e}")
+            return None
     
     def get_model_once():
         if "model" not in st.session_state:
             model = load_model_cached()
             st.session_state["model"] = model
         return st.session_state["model"]
-
+    
     st.markdown("---")
     st.subheader("Predict Annual Medical Cost")
     st.caption("Enter patient info to estimate future medical cost. The prediction is based on historical trends.")
@@ -374,7 +379,8 @@ def main():
                 })
                 pred = float(model.predict(input_df.values)[0])
                 st.success(f"Predicted Annual Medical Cost: ${pred:,.2f}")
-                
+    
+                # Fetch historical cost data for visualization
                 hist_df = run_query(hist_sql, tuple(params))
                 if hist_df.empty:
                     st.warning("No historical data. Using default ranges.")
