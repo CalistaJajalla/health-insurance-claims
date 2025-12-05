@@ -2,7 +2,7 @@
 
 A comprehensive end-to-end ETL and machine learning pipeline that processes medical insurance claims data, predicts annual medical costs, and visualizes insights through an interactive Streamlit dashboard.
 
-![Streamlit Banner](./media/stream_banner.png)
+![Streamlit Banner](./pics/health-claims.FvS8y9xH.gif.part)
 
 ---
 
@@ -54,7 +54,7 @@ flowchart TD
 
 ## How to Use the Streamlit Dashboard?
 
-![Streamlit Banner](./media/stream_banner.png)
+![Streamlit Banner](./pics/health-claims-ml.png)
 
 The Streamlit app provides an **interactive analytics and prediction interface** that queries the PostgreSQL database and uses the trained ML model to generate predictions on demand.
 
@@ -72,7 +72,7 @@ Displayed charts and features include:
 
 The dashboard supports filters by region and age group to enable drill-down analysis into claims patterns and cost drivers.
 
-Here’s the Streamlit demo: https://appappfallbackpy-52v8ru6ga98qsxswauscgd.streamlit.app/
+Here’s the Streamlit demo: https://health-claims-calistajajalla.streamlit.app/
 
 
 ## Next Steps / Recommendations
@@ -84,3 +84,4 @@ Here’s the Streamlit demo: https://appappfallbackpy-52v8ru6ga98qsxswauscgd.str
 - Expand ML models to include risk classification or cost anomaly detection
 
 - Improve dashboard UI with export functionality and alerts for high-risk patients
+
