@@ -37,7 +37,7 @@ plt.rcParams.update({
     "ytick.color": PALETTE["dark"],
 })
 
-# Helpers (This is just for making the numbers more readabl, i.e., 20000 --> 20K)
+# Helpers (This is just for making the numbers more readable, i.e., 20000 --> 20K)
 def human_format(num):
     if num is None or (isinstance(num, float) and pd.isna(num)):
         return "N/A"
@@ -218,7 +218,7 @@ def main():
         with st.expander("Show Plan Type Full Names"):
             for k,v in plan_defs.items():
                 st.write(f"**{k}**: {v}")
-
+                
     # Chart 3: Average Medical Cost by Age
     cost_sql = f"""
     SELECT
@@ -327,6 +327,7 @@ def main():
             ax6.spines['top'].set_visible(False)
             ax6.spines['right'].set_visible(False)
             st.pyplot(fig6)
+
 
 
     # ML Prediction Section
